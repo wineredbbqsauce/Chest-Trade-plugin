@@ -1,0 +1,17 @@
+name: ChestTrade
+main: no.wineredbbqsauce.chesttrade.ChestTrade
+version: 1.0.0-SNAPSHOT
+api-version: "1.21"
+author: Wineredbbqsauce
+description: A plugin that allows players to trade items using chests.
+
+commands:
+  ctshop:
+    description: Admin cmd for creating chest trade shops.
+    usage: /ctshop create
+    persmission: chesttrade.admin
+
+permissions:
+  chesttrade.admin:
+    description: Allows the player to create and manage chest trade shops.
+    default: op

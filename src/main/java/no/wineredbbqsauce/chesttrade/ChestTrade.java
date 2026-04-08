@@ -2,7 +2,6 @@
 package no.wineredbbqsauce.chesttrade;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -83,7 +82,7 @@ public class ChestTrade extends JavaPlugin implements Listener {
 
         int costAmount, productAmount;
         try {
-            costAmoung = Interger.parseInt(args[2]);
+            costAmount = Integer.parseInt(args[2]);
             productAmount = Integer.parseInt(args[4]);
         } catch (NumberFormatException e) {
             player.sendMessage("Cost amount and product amount must be integers.");
@@ -91,7 +90,7 @@ public class ChestTrade extends JavaPlugin implements Listener {
         }
 
         Block targetBlock = player.getTargetBlockExact(5);
-        if (targetBlock == null || !(target:getStack() instanceof Chest chest)) {
+        if (targetBlock == null || !(targetBlock.getState() instanceof Chest chest)) {
             player.sendMessage("You must be looking at a chest within 5 blocks.");
             return true;
         }
@@ -99,13 +98,13 @@ public class ChestTrade extends JavaPlugin implements Listener {
         TileState state = (TileState) chest;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
-        pdc.set(keyCostType, PersistentDataType.STRING, costMat.toString());
-        pdc.set(keyCostAmount, PersistentDataType.INTEGER, costAmount);
-        pdc.set(keyProductType, PersistentDataType.STRING, productMat.toString());
-        pdc.set(keyProductAmount, PersistentDataType.INTEGER, productAmount);
-        pdc.set(keyOwner, PersistentDataType.STRING, player.getUniqueId().toString());
+        data.set(keyCostType, PersistentDataType.STRING, costMat.name());
+        data.set(keyCostAmount, PersistentDataType.INTEGER, costAmount);
+        data.set(keyProductType, PersistentDataType.STRING, productMat.name());
+        data.set(keyProductAmount, PersistentDataType.INTEGER, productAmount);
+        data.set(keyOwner, PersistentDataType.STRING, player.getUniqueId().toString());
 
-        state.update():
+        state.update();
 
         player.sendMessage("Trade Chest successfully created: " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
         return true;
@@ -127,16 +126,16 @@ public class ChestTrade extends JavaPlugin implements Listener {
         TileState state = (TileState) chest;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
-        if (!pdc.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
+        if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
 
         event.setCancelled(true); // Blokker vanlig åpning
 
         Player player = event.getPlayer();
 
-        Material costMat = Material.matchMaterial(pdc.get(keyCostType, PersistentDataType.STRING));
-        Integer costAmount = pdc.get(keyCostAmount, PersistentDataType.INTEGER);
-        Material productMat = Material.matchMaterial(pdc.get(keyProductType, PersistentDataType.STRING));
-        Integer productAmount = pdc.get(keyProductAmount, PersistentDataType.INTEGER);
+        Material costMat = Material.matchMaterial(data.get(keyCostType, PersistentDataType.STRING));
+        Integer costAmount = data.get(keyCostAmount, PersistentDataType.INTEGER);
+        Material productMat = Material.matchMaterial(data.get(keyProductType, PersistentDataType.STRING));
+        Integer productAmount = data.get(keyProductAmount, PersistentDataType.INTEGER);
         
         if (costMat == null || costAmount == null || productMat == null || productAmount == null) {
             player.sendMessage("This trade chest is misconfigured.");
@@ -145,21 +144,62 @@ public class ChestTrade extends JavaPlugin implements Listener {
 
         Inventory chestInv = chest.getBlockInventory();
 
-        if (!hasEnough(chestInv, productMat, productAmount)) {
-            player.sendMessage("This chest doesn't have enough " + productMat + " to trade:");
+        if (!hasEnoughItems(chestInv, productMat, productAmount)) {
+            player.sendMessage("This chest doesn't have enough " + productMat + " to trade.");
             return;
         }
 
-        if (!hasEnough(player.getInventory(), costMat, costAmount)) {
-            player.sendMessage("You don't have enough " + costMat + " to trade:");
+        if (!hasEnoughItems(player.getInventory(), costMat, costAmount)) {
+            player.sendMessage("You don't have enough " + costMat + " to trade.");
             return;
         }
 
         removeItems(player.getInventory(), costMat, costAmount);
         removeItems(chestInv, productMat, productAmount);
-        chestInv.addItem(new ItemStack(costMat, costAmount);
+        giveItems(player.getInventory(), productMat, productAmount);
+        chestInv.addItem(new ItemStack(costMat, costAmount));
         
         player.sendMessage("Trade successful! You traded " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
+    }
+
+    private boolean hasEnoughItems(Inventory inv, Material mat, int amount) {
+        int count = 0;
+        for (ItemStack item : inv.getContents()){
+            if (item != null && item.getType() == mat) {
+                count += item.getAmount();
+                if (count >= amount) return true;
+            }
+        }
+        return false;
+    }
+
+    private void removeItems(Inventory inv, Material mat, int amount) {
+        int toRemove = amount;
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack item = inv.getItem(i);
+            if (item == null || item.getType() != mat) continue;
+
+            int stackAmount = item.getAmount();
+            if (stackAmount <= toRemove) {
+                inv.setItem(i, null);
+                toRemove -= stackAmount;
+            } else {
+                item.setAmount(stackAmount - toRemove);
+                inv.setItem(i, item);
+                return;
+            }
+
+            if (toRemove <= 0) return;
+        }
+    }
+
+    private void giveItems(Inventory inv, Material mat, int amount) {
+        int remaining = amount;
+        while (remaining > 0) {
+            int stack = Math.min(remaining, mat.getMaxStackSize());
+            inv.addItem(new ItemStack(mat, stack));
+            remaining -= stack;
+        }
     }
     
 }
