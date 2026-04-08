@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -106,6 +107,9 @@ public class ChestTrade extends JavaPlugin implements Listener {
 
         state.update();
 
+        Inventory chestInv = chest.getBlockInventory();
+        protectedItems.put(targetBlock.getLocation(), chestInv.getContents().clone());
+
         player.sendMessage("Trade Chest successfully created: " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
         return true;
     }  
@@ -158,8 +162,22 @@ public class ChestTrade extends JavaPlugin implements Listener {
         removeItems(chestInv, productMat, productAmount);
         giveItems(player.getInventory(), productMat, productAmount);
         chestInv.addItem(new ItemStack(costMat, costAmount));
+
+        // Oppdater beskyttede items for denne chesten
+        protectedItems.put(block.getLocation(), chestInv.getContents().clone());
         
         player.sendMessage("Trade successful! You traded " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
+    }
+
+    // Blokker hopper
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+       Inventory source = event.getSource();
+       Inventory destination = event.getDestination();
+
+       if (isTradeChest(source) || isTradeChest(destination)) {
+           event.setCancelled(true);
+       }
     }
 
     private boolean hasEnoughItems(Inventory inv, Material mat, int amount) {
@@ -201,5 +219,13 @@ public class ChestTrade extends JavaPlugin implements Listener {
             remaining -= stack;
         }
     }
-    
+
+    private boolean isTradeChest(Inventory inv) {
+        if (inv.getHolder() instanceof Chest chest) {
+            TileState state = (TileState) chest;
+            PersistentDataContainer data = state.getPersistentDataContainer();
+            return data.has(keyCostType, PersistentDataType.STRING);
+        }
+        return false;
+    }
 }
