@@ -14,8 +14,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -24,6 +26,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.util.HashMap;
 import java.util.Map;
+import org.bukkit.ChatColor;
 
 public class ChestTrade extends JavaPlugin implements Listener {
     private NamespacedKey keyCostType;
@@ -45,12 +48,24 @@ public class ChestTrade extends JavaPlugin implements Listener {
         keyIsTradeSign = new NamespacedKey(this, "isTradeSign");
         
         Bukkit.getPluginManager().registerEvents(this, this);
-        getLogger().info("ChestTrade enabled!");
+
+        // Velg din egen farge
+        getLogger().info(ChatColor.GREEN + "✓ ChestTrade enabled!");                      // Grønn
+        // getLogger().info(ChatColor.YELLOW + "✓ ChestTrade enabled!");                  // Gul
+        // getLogger().info(ChatColor.BLUE + "✓ ChestTrade enabled!");                    // Blå
+        // getLogger().info(ChatColor.RED + "✓ ChestTrade enabled!");                     // Rød
+        // getLogger().info(ChatColor.LIGHT_PURPLE + "✓ ChestTrade enabled!");            // Lilla
+
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("ChestTrade disabled!");
+        // Velg din egen farge
+        // getLogger().info(ChatColor.GREEN + "✓ ChestTrade disabled!");                   // Grønn
+        // getLogger().info(ChatColor.YELLOW + "✓ ChestTrade disabled!");                  // Gul
+        // getLogger().info(ChatColor.BLUE + "✓ ChestTrade disabled!");                    // Blå
+        getLogger().info(ChatColor.RED + "✓ ChestTrade disabled!");                        // Rød
+        // getLogger().info(ChatColor.LIGHT_PURPLE + "✓ ChestTrade disabled!");            // Lilla
     }
 
     /**
@@ -72,7 +87,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         return true;
     }
 
-    if (!player.hasPermission("chesttrade.admin")) {
+    if (!player.hasPermission("chesttrade.create")) {
         player.sendMessage("You don't have permission to use this command.");
         return true;
     }
@@ -105,7 +120,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         return true;
     }
 
-    setupTradeChest(chest, costMat, costAmount, productMat, productAmount);
+    setupTradeChest(chest, costMat, costAmount, productMat, productAmount, player);
     player.sendMessage("Trade Chest successfully created: " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
     return true;
 }
@@ -124,7 +139,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         if (line1 != null && line1.equalsIgnoreCase("[TRADE]")) {
             Player player = event.getPlayer();
 
-            if (!player.hasPermission("chesttrade.admin")){
+            if (!player.hasPermission("chesttrade.create")){
                 player.sendMessage("You don't have permission to create trade signs.");
                 event.setCancelled(true);
                 return;
@@ -190,7 +205,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             signState.update();
 
             // Sett opp traden-chesten
-            setupTradeChest(chest, costMat, costAmount, productMat, productAmount);
+            setupTradeChest(chest, costMat, costAmount, productMat, productAmount, player);
 
             // Endre skiltet til å vise hva det handler om
             event.setLine(0, "§2[TRADE]");
@@ -235,6 +250,14 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         event.setCancelled(true); // Blokker vanlig åpning
 
         Player player = event.getPlayer();
+        String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
+
+        // TIllat Owner og OP for å åpne shop
+        if (player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) {
+            return; // Tillat åpning
+        }
+
+        event.setCancelled(true);
 
         Material costMat = Material.matchMaterial(data.get(keyCostType, PersistentDataType.STRING));
         Integer costAmount = data.get(keyCostAmount, PersistentDataType.INTEGER);
@@ -271,6 +294,16 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
     // Blokker hopper
     @EventHandler
+    public void onInventoryMoveItem(InventoryMoveItemEvent event) {
+        Inventory source = event.getSource();
+        Inventory destination = event.getDestination();
+
+        if (isTradeChest(source) || isTradeChest(destination)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         Inventory inv = event.getInventory();
 
@@ -280,6 +313,28 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             }
         }
     }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        if (!(block.getState() instanceof Chest chest)) return;
+
+        TileState state = (TileState) chest;
+        PersistentDataContainer data = state.getPersistentDataContainer();
+
+        if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
+
+        Player player = event.getPlayer();
+        String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
+
+        // Tillat Owner og OP for å ødelegge chest, men BARE med SHIFT + AXE
+        if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && player.isSneaking() && player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
+            return; // Tillat ødeleggelse
+        }
+        event.setCancelled(true);
+        player.sendMessage("You can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
+    }
+
 
     private boolean hasEnoughItems(Inventory inv, Material mat, int amount) {
         int count = 0;
@@ -330,7 +385,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         return false;
     }
 
-    private void setupTradeChest(Chest chest, Material costMat, int costAmount, Material productMat, int productAmount) {
+    private void setupTradeChest(Chest chest, Material costMat, int costAmount, Material productMat, int productAmount, Player owner) {
         TileState state = (TileState) chest;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
@@ -338,7 +393,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         data.set(keyCostAmount, PersistentDataType.INTEGER, costAmount);
         data.set(keyProductType, PersistentDataType.STRING, productMat.name());
         data.set(keyProductAmount, PersistentDataType.INTEGER, productAmount);
-        data.set(keyOwner, PersistentDataType.STRING, "admin"); // Placeholder, can be set to actual owner UUID if needed
+        data.set(keyOwner, PersistentDataType.STRING, owner.getUniqueId().toString()); // Placeholder, can be set to actual owner UUID if needed
 
         state.update();
 
