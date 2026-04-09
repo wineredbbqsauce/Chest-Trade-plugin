@@ -10,6 +10,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
+
 import org.bukkit.block.Sign;
 import org.bukkit.block.TileState;
 import org.bukkit.command.Command;
@@ -28,6 +29,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.event.entity.EntityExplodeEvent;
+import java.util.Iterator;
 
 public class ChestTrade extends JavaPlugin implements Listener {
     private NamespacedKey keyCostType;
@@ -88,6 +91,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         sender.sendMessage("Only players can use this command.");
         return true;
     }
+    
 
     if (!player.hasPermission("chesttrade.create")) {
         player.sendMessage("You don't have permission to use this command.");
@@ -319,49 +323,84 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         Block block = event.getBlock();
         Player player = event.getPlayer();
 
-        if (block.getState() instanceof Sign sign) {
+        // Sjekk om det er et trade-sklit
+        if (block.getState() instanceof Sign) {
+            Sign sign = (Sign) block.getState();
             TileState signState = (TileState) sign;
             PersistentDataContainer signData = signState.getPersistentDataContainer();
 
             if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
-                // Det er et trade-slikt - finn chest under
                 Block chestBlock = block.getRelative(0, -1, 0);
-                if (chestBlock.getState() instanceof Chest chest) {
+                if (chestBlock.getState() instanceof Chest) {
+                Chest chest = (Chest) chestBlock.getState();
                     TileState chestState = (TileState) chest;
                     PersistentDataContainer chestData = chestState.getPersistentDataContainer();
                     String ownerUUID = chestData.get(keyOwner, PersistentDataType.STRING);
 
-                    // Tillat bare Owner med SHIFT + AXE
-                    if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && player.isSneaking() && player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
-                        return; // Tillat ødeleggelse
+                    if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && 
+                        player.isSneaking() && 
+                        player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
+                        return;
                     }
 
-                    event.setCancelled(true);
+                   event.setCancelled(true);
                     player.sendMessage("§cYou can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
                     return;
                 }
             }
         }
+    
+        // Sjekk om det er en trade chest direkte
+        if (block.getState() instanceof Chest) {
+            Chest chest = (Chest) block.getState();
+            TileState state = (TileState) chest;
+            PersistentDataContainer data = state.getPersistentDataContainer();
 
-        // Sjekk om trade chest
-        if (!(block.getState() instanceof Chest chest)) return;
+        if (data.has(keyCostType, PersistentDataType.STRING)) {
+                String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
 
-        TileState state = (TileState) chest;
-        PersistentDataContainer data = state.getPersistentDataContainer();
-
-        if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
-
-
-        String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
-
-        // Tillat Owner og OP for å ødelegge chest, men BARE med SHIFT + AXE
-        if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && player.isSneaking() && player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
-            return; // Tillat ødeleggelse
+                if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && 
+                    player.isSneaking() && 
+                    player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
+                    return;
+                }
+                event.setCancelled(true);
+                player.sendMessage("§cYou can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
+            }
         }
-        event.setCancelled(true);
-        player.sendMessage("§cYou can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
     }
+    @EventHandler
+    public void onEntityExplode(EntityExplodeEvent event) {
+        java.util.Iterator<Block> iterator = event.blockList().iterator();
 
+        while (iterator.hasNext()) {
+
+            Block block = iterator.next();
+
+            if (block.getState() instanceof Sign) {
+                Sign sign = (Sign) block.getState();
+                TileState signState = (TileState) sign;
+                PersistentDataContainer signData = signState.getPersistentDataContainer();
+
+                if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
+                        // Det er et trade-slikt - finn chest under
+                    iterator.remove(); // Fjern skiltet fra eksplosjonslisten
+                    continue;
+                }
+            }
+
+            // Sjekk om det er en trade chest
+            if (block.getState() instanceof Chest chest) {
+                TileState chestState = (TileState) chest;
+                PersistentDataContainer chestData = chestState.getPersistentDataContainer();
+
+                if (chestData.has(keyCostType, PersistentDataType.STRING)) {
+                    // Det er en trade chest - fjern den fra eksplosjonslisten
+                    iterator.remove();
+                }
+            }
+        }
+    }
 
     private boolean hasEnoughItems(Inventory inv, Material mat, int amount) {
         int count = 0;
