@@ -1,7 +1,11 @@
 // hello world
 package no.wineredbbqsauce.chesttrade;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -24,9 +28,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import java.util.HashMap;
-import java.util.Map;
-import org.bukkit.ChatColor;
 
 public class ChestTrade extends JavaPlugin implements Listener {
     private NamespacedKey keyCostType;
@@ -50,22 +51,23 @@ public class ChestTrade extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
 
         // Velg din egen farge
-        getLogger().info(ChatColor.GREEN + "✓ ChestTrade enabled!");                      // Grønn
-        // getLogger().info(ChatColor.YELLOW + "✓ ChestTrade enabled!");                  // Gul
-        // getLogger().info(ChatColor.BLUE + "✓ ChestTrade enabled!");                    // Blå
-        // getLogger().info(ChatColor.RED + "✓ ChestTrade enabled!");                     // Rød
-        // getLogger().info(ChatColor.LIGHT_PURPLE + "✓ ChestTrade enabled!");            // Lilla
+        // Velg din egen farge
+        Bukkit.getConsoleSender().sendMessage(ChatColor.GREEN + "✓ ChestTrade enabled!");                      // Grønn
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.YELLOW + "✓ ChestTrade enabled!");                  // Gul
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.BLUE + "✓ ChestTrade enabled!");                    // Blå
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.RED + "✓ ChestTrade enabled!");                     // Rød
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.LIGHT_PURPLE + "✓ ChestTrade enabled!");            // Lilla
 
     }
 
     @Override
     public void onDisable() {
         // Velg din egen farge
-        // getLogger().info(ChatColor.GREEN + "✓ ChestTrade disabled!");                   // Grønn
-        // getLogger().info(ChatColor.YELLOW + "✓ ChestTrade disabled!");                  // Gul
-        // getLogger().info(ChatColor.BLUE + "✓ ChestTrade disabled!");                    // Blå
-        getLogger().info(ChatColor.RED + "✓ ChestTrade disabled!");                        // Rød
-        // getLogger().info(ChatColor.LIGHT_PURPLE + "✓ ChestTrade disabled!");            // Lilla
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.GREEN + "✗ ChestTrade disabled!");                      // Grønn
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.YELLOW + "✗ ChestTrade disabled!");                  // Gul
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.BLUE + "✗ ChestTrade disabled!");                    // Blå
+        Bukkit.getConsoleSender().sendMessage(ChatColor.RED + "✗ ChestTrade disabled!");                     // Rød
+        // Bukkit.getConsoleSender().sendMessage(ChatColor.LIGHT_PURPLE + "✗ ChestTrade disabled!");            // Lilla
     }
 
     /**
@@ -247,8 +249,6 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
         if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
 
-        event.setCancelled(true); // Blokker vanlig åpning
-
         Player player = event.getPlayer();
         String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
 
@@ -317,6 +317,33 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
+        Player player = event.getPlayer();
+
+        if (block.getState() instanceof Sign sign) {
+            TileState signState = (TileState) sign;
+            PersistentDataContainer signData = signState.getPersistentDataContainer();
+
+            if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
+                // Det er et trade-slikt - finn chest under
+                Block chestBlock = block.getRelative(0, -1, 0);
+                if (chestBlock.getState() instanceof Chest chest) {
+                    TileState chestState = (TileState) chest;
+                    PersistentDataContainer chestData = chestState.getPersistentDataContainer();
+                    String ownerUUID = chestData.get(keyOwner, PersistentDataType.STRING);
+
+                    // Tillat bare Owner med SHIFT + AXE
+                    if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && player.isSneaking() && player.getInventory().getItemInMainHand().getType().toString().contains("AXE")) {
+                        return; // Tillat ødeleggelse
+                    }
+
+                    event.setCancelled(true);
+                    player.sendMessage("§cYou can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
+                    return;
+                }
+            }
+        }
+
+        // Sjekk om trade chest
         if (!(block.getState() instanceof Chest chest)) return;
 
         TileState state = (TileState) chest;
@@ -324,7 +351,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
         if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
 
-        Player player = event.getPlayer();
+
         String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
 
         // Tillat Owner og OP for å ødelegge chest, men BARE med SHIFT + AXE
@@ -332,7 +359,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             return; // Tillat ødeleggelse
         }
         event.setCancelled(true);
-        player.sendMessage("You can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
+        player.sendMessage("§cYou can't break this trade chest! Only the owner or OPs can break it, and they must be sneaking with an axe.");
     }
 
 

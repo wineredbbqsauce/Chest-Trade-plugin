@@ -1,6 +1,6 @@
 name: ChestTrade
 main: no.wineredbbqsauce.chesttrade.ChestTrade
-version: 1.0.5
+version: 1.0.6
 api-version: "1.21"
 author: Wineredbbqsauce
 description: A plugin that allows players to trade items using chests.
