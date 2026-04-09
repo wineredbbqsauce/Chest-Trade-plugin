@@ -248,6 +248,11 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         return true;
     }
 
+    if (costAmount <= 0 || productAmount <= 0) {
+        player.sendMessage("Amounts must be greater than 0.");
+        return true;
+    }
+
     Block targetBlock = player.getTargetBlockExact(5);
     if (targetBlock == null || !(targetBlock.getState() instanceof Chest chest)) {
         player.sendMessage("You must be looking at a chest within 5 blocks.");
@@ -318,6 +323,18 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
                 productAmount = Integer.parseInt(product[1].trim());
             } catch (NumberFormatException e) {
                 player.sendMessage("Amounts must be integers");
+                event.setCancelled(true);
+                return;
+            }
+
+            if (costAmount <= 0) {
+                player.sendMessage("Cost amount must be greater than 0.");
+                event.setCancelled(true);
+                return;
+            }
+
+            if (productAmount <= 0) {
+                player.sendMessage("Product amount must be greater than 0.");
                 event.setCancelled(true);
                 return;
             }
