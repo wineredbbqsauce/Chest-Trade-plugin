@@ -87,8 +87,136 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
     if (!command.getName().equalsIgnoreCase("ctshop")) return false;
 
-    if (!(sender instanceof Player player)) {
+    if (!(sender instanceof Player)) {
         sender.sendMessage("Only players can use this command.");
+        return true;
+    }
+    
+
+    Player player = (Player) sender;
+
+    // /ctshop info - vis generell hjelp om hvordan lage shop
+    // /ctshop info - vis generell hjelp om hvordan lage shop
+    if (args.length == 1 && args[0].equalsIgnoreCase("info")) {
+        player.sendMessage("§6======== §e§lCHEST TRADE HELP §6========");
+        player.sendMessage("");
+        player.sendMessage("§eHow to create a trade chest:");
+        player.sendMessage("");
+        player.sendMessage("§7Method 1 - Command:");
+        player.sendMessage("  §f/ctshop create <cost> <amount> <product> <amount>");
+        player.sendMessage("  §8Example: §7/ctshop create DIAMOND 1 DIRT 16");
+        player.sendMessage("");
+        player.sendMessage("§7Method 2 - Sign:");
+        player.sendMessage("  §fPlace a sign above a chest with:");
+        player.sendMessage("  §8Line 1: §f[TRADE]");
+        player.sendMessage("  §8Line 2: §fDIAMOND:1");
+        player.sendMessage("  §8Line 3: §fDIRT:16");
+        player.sendMessage("");
+        player.sendMessage("§eCommands:");
+        player.sendMessage("  §f/ctshop info §7- Show this help");
+        player.sendMessage("  §f/ctshop info chest §7- Show info about trade chest");
+        player.sendMessage("  §f/ctshop create ... §7- Create a trade chest");
+        player.sendMessage("");
+        player.sendMessage("§ePermissions:");
+        player.sendMessage("  §7- §fchesttrade.create §7- Allow creating shops");
+        player.sendMessage("§6================================");
+        return true;
+    }
+
+    // /ctshop info chest - vis info om trade chest man sikter på
+    if (args.length == 2 && args[0].equalsIgnoreCase("info") && args[1].equalsIgnoreCase("chest")) {
+        Block targetBlock = player.getTargetBlockExact(5);
+
+        if (targetBlock == null) {
+            player.sendMessage("You must be looking at a chest within 5 blocks.");
+            return true;
+        }
+
+        Chest chest = null;
+
+        // Sjekker om man ser på et Shop Skilt
+        if (targetBlock.getState() instanceof Sign) {
+            Sign sign = (Sign) targetBlock.getState();
+            TileState signState = (TileState) sign;
+            PersistentDataContainer signData = signState.getPersistentDataContainer();
+
+            if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
+                Block chestBlock = targetBlock.getRelative(0, -1, 0);
+                if (chestBlock.getState() instanceof Chest) {
+                    chest = (Chest) chestBlock.getState();
+                }
+            }
+        }
+
+        // Sjekk om man sikter direkt på en Chest
+        else if (targetBlock.getState() instanceof Chest) {
+            chest = (Chest) targetBlock.getState();
+        }
+
+        if (chest == null) {
+            player.sendMessage("§cThis is not a trade chest.");
+            player.sendMessage("§7Tip: Use §f/ctshop info §7for help on creating shops.");
+            return true;
+        }
+
+        TileState state = (TileState) chest;
+        PersistentDataContainer data = state.getPersistentDataContainer();
+
+        if (!data.has(keyCostType, PersistentDataType.STRING)) {
+            player.sendMessage("§cThis chest is not configured as a trade chest.");
+            player.sendMessage("§7Tip: Use §f/ctshop info §7for help on creating shops.");
+            return true;
+        }
+
+        String costTypeStr = data.get(keyCostType, PersistentDataType.STRING);
+        Integer costAmount = data.get(keyCostAmount, PersistentDataType.INTEGER);
+        String productTypeStr = data.get(keyProductType, PersistentDataType.STRING);
+        Integer productAmount = data.get(keyProductAmount, PersistentDataType.INTEGER);
+        String ownerUUID = data.get(keyOwner, PersistentDataType.STRING); 
+
+
+        // Hent data fra Chesten
+        String ownerName = "Unknown";
+        try {
+            ownerName = Bukkit.getOfflinePlayer(java.util.UUID.fromString(ownerUUID)).getName();
+            if (ownerName == null) ownerName = "Unknown";
+        } catch (Exception e) {
+            // Ignorer feil ved henting av spillerdata
+            ownerName = ownerUUID;
+        }
+
+        // Sjekk Lagerbeholdning
+        Inventory chestInv = chest.getBlockInventory();
+        Material costMat = Material.matchMaterial(costTypeStr);
+        Material productMat = Material.matchMaterial(productTypeStr);
+        int costStock = countItems(chestInv, costMat);
+        int productStock = countItems(chestInv, productMat);
+
+        // Finn plassering?
+        org.bukkit.Location loc = chest.getLocation();
+        String location = loc.getWorld().getName() + " " + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ();
+
+        // Vis info til spilleren
+        player.sendMessage("§6======== §e§lTRADE CHEST INFO §6========");
+        player.sendMessage("§7Owner: §f" + ownerName);
+        player.sendMessage("§7Location: §f" + location);
+        player.sendMessage("");
+        player.sendMessage("§eCost (what you pay):");
+        player.sendMessage("  §7- §f" + costAmount + "x " + costTypeStr + " §7(Stock: §a" + costStock + "§7)");
+        player.sendMessage("");
+        player.sendMessage("§eProduct (what you get):");
+        player.sendMessage("  §7- §f" + productAmount + "x " + productTypeStr + " §7(Stock: §a" + productStock + "§7)");
+        player.sendMessage("");
+
+        // Vis status om chesten er tom eller full
+
+         if (productStock >= productAmount) {
+            player.sendMessage("§a✓ Shop is ready for trading!");
+        } else {
+            player.sendMessage("§c✗ Shop needs §e" + (productAmount - productStock) + " §cmore " + productTypeStr);
+        }
+
+        player.sendMessage("§6================================");
         return true;
     }
     
@@ -465,5 +593,16 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
         Inventory chestInv = chest.getBlockInventory();
         protectedItems.put(chest.getLocation(), chestInv.getContents().clone());
+    }
+
+    private int countItems(Inventory inv, Material mat) {
+        if (mat == null) return 0;
+        int count = 0;
+        for (ItemStack item : inv.getContents()) {
+            if (item != null && item.getType() == mat) {
+                count += item.getAmount();
+            }
+        }
+        return count;
     }
 }
