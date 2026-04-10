@@ -10,7 +10,6 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
-
 import org.bukkit.block.Sign;
 import org.bukkit.block.TileState;
 import org.bukkit.command.Command;
@@ -21,6 +20,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -29,8 +29,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.event.entity.EntityExplodeEvent;
-import java.util.Iterator;
 
 public class ChestTrade extends JavaPlugin implements Listener {
     private NamespacedKey keyCostType;
@@ -123,16 +121,17 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         return true;
     }
 
+    
     // /ctshop info chest - vis info om trade chest man sikter på
     if (args.length == 2 && args[0].equalsIgnoreCase("info") && args[1].equalsIgnoreCase("chest")) {
         Block targetBlock = player.getTargetBlockExact(5);
 
-        if (targetBlock == null) {
+        if (targetBlock == null || !isValidTradeContainer(targetBlock)) {
             player.sendMessage("You must be looking at a chest within 5 blocks.");
             return true;
         }
 
-        Chest chest = null;
+        org.bukkit.block.Container container = getContainer(targetBlock);
 
         // Sjekker om man ser på et Shop Skilt
         if (targetBlock.getState() instanceof Sign) {
@@ -141,25 +140,23 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             PersistentDataContainer signData = signState.getPersistentDataContainer();
 
             if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
-                Block chestBlock = targetBlock.getRelative(0, -1, 0);
-                if (chestBlock.getState() instanceof Chest) {
-                    chest = (Chest) chestBlock.getState();
-                }
+                Block containerBlock = targetBlock.getRelative(0, -1, 0);
+                container = getContainer(containerBlock);
             }
         }
 
         // Sjekk om man sikter direkt på en Chest
-        else if (targetBlock.getState() instanceof Chest) {
-            chest = (Chest) targetBlock.getState();
+        else {
+            container = getContainer(targetBlock);
         }
 
-        if (chest == null) {
+        if (container == null) {
             player.sendMessage("§cThis is not a trade chest.");
             player.sendMessage("§7Tip: Use §f/ctshop info §7for help on creating shops.");
             return true;
         }
 
-        TileState state = (TileState) chest;
+        TileState state = (TileState) container;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
         if (!data.has(keyCostType, PersistentDataType.STRING)) {
@@ -186,14 +183,14 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         }
 
         // Sjekk Lagerbeholdning
-        Inventory chestInv = chest.getBlockInventory();
+        Inventory containerInv = container.getInventory();
         Material costMat = Material.matchMaterial(costTypeStr);
         Material productMat = Material.matchMaterial(productTypeStr);
-        int costStock = countItems(chestInv, costMat);
-        int productStock = countItems(chestInv, productMat);
+        int costStock = countItems(containerInv, costMat);
+        int productStock = countItems(containerInv, productMat);
 
         // Finn plassering?
-        org.bukkit.Location loc = chest.getLocation();
+        org.bukkit.Location loc = container.getLocation();
         String location = loc.getWorld().getName() + " " + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ();
 
         // Vis info til spilleren
@@ -254,12 +251,13 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
     }
 
     Block targetBlock = player.getTargetBlockExact(5);
-    if (targetBlock == null || !(targetBlock.getState() instanceof Chest chest)) {
+    if (targetBlock == null || !isValidTradeContainer(targetBlock)) {
         player.sendMessage("You must be looking at a chest within 5 blocks.");
         return true;
     }
 
-    setupTradeChest(chest, costMat, costAmount, productMat, productAmount, player);
+    org.bukkit.block.Container container = getContainer(targetBlock);
+    setupTradeContainer(container, costMat, costAmount, productMat, productAmount, player);
     player.sendMessage("Trade Chest successfully created: " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
     return true;
 }
@@ -341,9 +339,9 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
             // Finn chest under skiltet
             Block signBlock = event.getBlock();
-            Block chestBlock = signBlock.getRelative(0, -1, 0);
+            Block containerBlock = signBlock.getRelative(0, -1, 0);
 
-            if (!(chestBlock.getState() instanceof Chest chest)) {
+            if (!isValidTradeContainer(containerBlock)) {
                 player.sendMessage("You must place the sign above a chest.");
                 event.setCancelled(true);
                 return;
@@ -356,7 +354,8 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             signState.update();
 
             // Sett opp traden-chesten
-            setupTradeChest(chest, costMat, costAmount, productMat, productAmount, player);
+            org.bukkit.block.Container container = getContainer(containerBlock);
+            setupTradeContainer(container, costMat, costAmount, productMat, productAmount, player);
 
             // Endre skiltet til å vise hva det handler om
             event.setLine(0, "§2[TRADE]");
@@ -374,26 +373,24 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         Block block = event.getClickedBlock();
 
         // Hvis det er skilt, finn chest under skiltet
-        Chest chest = null;
+        org.bukkit.block.Container container = null;
         if (block.getState() instanceof Sign sign) {
             TileState signState = (TileState) sign;
             PersistentDataContainer signData = signState.getPersistentDataContainer();
 
             if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
                 Block blockBelow = block.getRelative(0, -1, 0);
-                if (blockBelow.getState() instanceof Chest c) {
-                    chest = c;
-                }
+                container = getContainer(blockBelow);
             }
         }
         // Hvis det er chest, bruk den direkte
-        else if (block.getState() instanceof Chest c) {
-            chest = c;
+        else {
+            container = getContainer(block);
         }
 
-        if (chest == null) return;
+        if (container == null) return;
 
-        TileState state = (TileState) chest;
+        TileState state = (TileState) container;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
         if (!data.has(keyCostType, PersistentDataType.STRING)) return; // Ikke en trade chest
@@ -418,9 +415,9 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             return;
         }
 
-        Inventory chestInv = chest.getBlockInventory();
+        Inventory containerInv = container.getInventory();
 
-        if (!hasEnoughItems(chestInv, productMat, productAmount)) {
+        if (!hasEnoughItems(containerInv, productMat, productAmount)) {
             player.sendMessage("This chest doesn't have enough " + productMat + " to trade.");
             return;
         }
@@ -431,12 +428,12 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         }
 
         removeItems(player.getInventory(), costMat, costAmount);
-        removeItems(chestInv, productMat, productAmount);
+        removeItems(containerInv, productMat, productAmount);
         giveItems(player.getInventory(), productMat, productAmount);
-        chestInv.addItem(new ItemStack(costMat, costAmount));
+        containerInv.addItem(new ItemStack(costMat, costAmount));
 
         // Oppdater beskyttede items for denne chesten
-        protectedItems.put(block.getLocation(), chestInv.getContents().clone());
+        protectedItems.put(block.getLocation(), containerInv.getContents().clone());
         
         player.sendMessage("Trade successful! You traded " + costAmount + " " + costMat + " for " + productAmount + " " + productMat);
     }
@@ -447,7 +444,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         Inventory source = event.getSource();
         Inventory destination = event.getDestination();
 
-        if (isTradeChest(source) || isTradeChest(destination)) {
+        if (isTradeContainer(source) || isTradeContainer(destination)) {
             event.setCancelled(true);
         }
     }
@@ -456,7 +453,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
     public void onInventoryClick(InventoryClickEvent event) {
         Inventory inv = event.getInventory();
 
-        if (isTradeChest(inv)) {
+        if (isTradeContainer(inv)) {
             if (!(event.getWhoClicked() instanceof Player player)) {
                 event.setCancelled(true);
             }
@@ -475,12 +472,11 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             PersistentDataContainer signData = signState.getPersistentDataContainer();
 
             if (signData.has(keyIsTradeSign, PersistentDataType.BYTE)) {
-                Block chestBlock = block.getRelative(0, -1, 0);
-                if (chestBlock.getState() instanceof Chest) {
-                Chest chest = (Chest) chestBlock.getState();
-                    TileState chestState = (TileState) chest;
-                    PersistentDataContainer chestData = chestState.getPersistentDataContainer();
-                    String ownerUUID = chestData.get(keyOwner, PersistentDataType.STRING);
+                org.bukkit.block.Container container = getContainer(block.getRelative(0, -1, 0));
+                if (container != null) {
+                    TileState containerState = (TileState) container;
+                    PersistentDataContainer containerData = containerState.getPersistentDataContainer();
+                    String ownerUUID = containerData.get(keyOwner, PersistentDataType.STRING);
 
                     if ((player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) && 
                         player.isSneaking() && 
@@ -494,11 +490,11 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
                 }
             }
         }
-    
+        
+        org.bukkit.block.Container container = getContainer(block);
         // Sjekk om det er en trade chest direkte
-        if (block.getState() instanceof Chest) {
-            Chest chest = (Chest) block.getState();
-            TileState state = (TileState) chest;
+        if (container !=null) {
+            TileState state = (TileState) container;
             PersistentDataContainer data = state.getPersistentDataContainer();
 
         if (data.has(keyCostType, PersistentDataType.STRING)) {
@@ -535,11 +531,13 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             }
 
             // Sjekk om det er en trade chest
-            if (block.getState() instanceof Chest chest) {
-                TileState chestState = (TileState) chest;
-                PersistentDataContainer chestData = chestState.getPersistentDataContainer();
+            org.bukkit.block.Container container = getContainer(block);
 
-                if (chestData.has(keyCostType, PersistentDataType.STRING)) {
+            if (container != null) {
+                TileState state = (TileState) container;
+                PersistentDataContainer containerData = state.getPersistentDataContainer();
+
+                if (containerData.has(keyCostType, PersistentDataType.STRING)) {
                     // Det er en trade chest - fjern den fra eksplosjonslisten
                     iterator.remove();
                 }
@@ -587,17 +585,18 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         }
     }
 
-    private boolean isTradeChest(Inventory inv) {
-        if (inv.getHolder() instanceof Chest chest) {
-            TileState state = (TileState) chest;
+    private boolean isTradeContainer(Inventory inv) {
+        if (inv.getHolder() instanceof org.bukkit.block.Container) {
+            org.bukkit.block.Container container = (org.bukkit.block.Container) inv.getHolder();
+            TileState state = (TileState) container;
             PersistentDataContainer data = state.getPersistentDataContainer();
             return data.has(keyCostType, PersistentDataType.STRING);
         }
         return false;
     }
 
-    private void setupTradeChest(Chest chest, Material costMat, int costAmount, Material productMat, int productAmount, Player owner) {
-        TileState state = (TileState) chest;
+    private void setupTradeContainer(org.bukkit.block.Container container, Material costMat, int costAmount, Material productMat, int productAmount, Player owner) {
+        TileState state = (TileState) container;
         PersistentDataContainer data = state.getPersistentDataContainer();
 
         data.set(keyCostType, PersistentDataType.STRING, costMat.name());
@@ -608,8 +607,8 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
         state.update();
 
-        Inventory chestInv = chest.getBlockInventory();
-        protectedItems.put(chest.getLocation(), chestInv.getContents().clone());
+        Inventory containerInv = container.getInventory();
+        protectedItems.put(container.getLocation(), containerInv.getContents().clone());
     }
 
     private int countItems(Inventory inv, Material mat) {
@@ -621,5 +620,18 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             }
         }
         return count;
+    }
+
+    private boolean isValidTradeContainer(Block block) {
+        return block != null && (block.getState() instanceof Chest || block.getState() instanceof org.bukkit.block.Barrel);
+    }
+
+    private org.bukkit.block.Container getContainer(Block block) {
+        if ( block == null) return null;
+
+        if (block.getState() instanceof org.bukkit.block.Container) {
+            return (org.bukkit.block.Container) block.getState();
+        }
+        return null;
     }
 }
