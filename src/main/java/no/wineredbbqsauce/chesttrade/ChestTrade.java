@@ -19,6 +19,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -114,6 +115,12 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         player.sendMessage("  §f/ctshop info §7- Show this help");
         player.sendMessage("  §f/ctshop info chest §7- Show info about trade chest");
         player.sendMessage("  §f/ctshop create ... §7- Create a trade chest");
+        player.sendMessage("");
+        player.sendMessage("§eNote about chest placement:");
+        player.sendMessage("§7- Trade chests cannot become double chests");
+        player.sendMessage("§7- To place a chest next to a trade chest:");
+        player.sendMessage("§8  → Shift+right-click on the block BELOW the trade chest");
+        player.sendMessage("§7- Or use a §fbarrel §7for more storage space");
         player.sendMessage("");
         player.sendMessage("§ePermissions:");
         player.sendMessage("  §7- §fchesttrade.create §7- Allow creating shops");
@@ -543,6 +550,141 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
                 }
             }
         }
+    }
+    @EventHandler
+    public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
+        Block placedBlock = event.getBlock();
+        Player player = event.getPlayer();
+    
+        if (!(placedBlock.getState() instanceof Chest)) return;
+    
+        Block against = event.getBlockAgainst();
+    
+        // Sjekk om det finnes en trade chest i nærheten (1 blokk unna)
+        Block[] nearby = {
+            placedBlock.getRelative(1, 0, 0),
+            placedBlock.getRelative(-1, 0, 0),
+            placedBlock.getRelative(0, 0, 1),
+            placedBlock.getRelative(0, 0, -1)
+        };
+    
+        for (Block nearbyBlock : nearby) {
+        org.bukkit.block.Container container = getContainer(nearbyBlock);
+        if (container != null) {
+            TileState state = (TileState) container;
+            PersistentDataContainer data = state.getPersistentDataContainer();
+            
+            if (data.has(keyCostType, PersistentDataType.STRING)) {
+                // Hvis chesten ble plassert mot blokken under trade chesten - DET ER LOV!
+                if (against.getRelative(0, 1, 0).equals(nearbyBlock) || 
+                    against.equals(nearbyBlock.getRelative(0, -1, 0))) {
+                    // Alt OK - ingen melding nødvendig
+                    return;
+                }
+                
+                // Hvis den ble plassert direkte mot trade chesten - BLOKKER
+                String ownerUUID = data.get(keyOwner, PersistentDataType.STRING);
+                if (!player.getUniqueId().toString().equals(ownerUUID) && !player.isOp()) {
+                    event.setCancelled(true);
+                    player.sendMessage("§cYou cannot place a chest directly against someone else's trade chest!");
+                    player.sendMessage("§7Tip: Shift+right-click on the block BELOW the trade chest instead.");
+                    return;
+                }
+                
+                event.setCancelled(true);
+                player.sendMessage("§cTrade chests cannot become double chests!");
+                player.sendMessage("§7Tip: Shift+right-click on the block BELOW the chest instead.");
+                return;
+                }
+            }
+        }
+    }
+
+    // @EventHandler
+    // public void onChestOpen(org.bukkit.event.inventory.InventoryOpenEvent event) {
+    //     Inventory inv = event.getInventory();
+
+    //     if (inv.getHolder() instanceof org.bukkit.block.DoubleChest) {
+    //         org.bukkit.block.DoubleChest doubleChest = (org.bukkit.block.DoubleChest) inv.getHolder();
+
+    //         // sjekk om det er en double chest
+    //         org.bukkit.block.Chest leftChest = (org.bukkit.block.Chest) doubleChest.getLeftSide();
+    //         org.bukkit.block.Chest rightChest = (org.bukkit.block.Chest) doubleChest.getRightSide();
+
+    //         // sjekk om EN av dem eren trade chest
+    //         boolean leftIsTrade = isTradeChestBlock(leftChest);
+    //         boolean rightIsTrade = isTradeChestBlock(rightChest);
+
+    //         if (leftIsTrade || rightIsTrade) {
+
+    //             event.setCancelled(true);
+
+    //             Player player = (Player) event.getPlayer();
+    //             player.sendMessage("§cThis trade chest cannot be opened as a double chest!");
+    //             player.sendMessage("§7The chest next to it must be broken to use the shop.");
+
+    //             Bukkit.getScheduler().runTask(this, () -> {
+    //                 leftChest.update();
+    //                 rightChest.update();
+    //             });
+    //         }
+    //     }
+    // }
+
+    @EventHandler
+    public void onChestPhysics(BlockPhysicsEvent event) {
+        Block block = event.getBlock();
+
+        if (!(block.getState() instanceof Chest)) return;
+        
+        Chest chest = (Chest) block.getState();
+
+        if (!isTradeChestBlock(chest)) return;
+
+        Block[] adjacent = {
+            block.getRelative(1, 0, 0),     // East
+            block.getRelative(-1, 0, 0),    // West
+            block.getRelative(0, 0, 1),     // South
+            block.getRelative(0, 0, -1)     // North
+        };
+
+        for (Block adjacentBlock : adjacent) {
+            if (adjacentBlock.getState() instanceof Chest) {
+                Chest otherChest = (Chest) adjacentBlock.getState();
+
+                if (!isTradeChestBlock(otherChest)) {
+                    org.bukkit.block.data.type.Chest chestData = (org.bukkit.block.data.type.Chest) block.getBlockData();
+                    chestData.setType(org.bukkit.block.data.type.Chest.Type.SINGLE);
+                    block.setBlockData(chestData);
+
+                    org.bukkit.block.data.type.Chest otherChestData = (org.bukkit.block.data.type.Chest) adjacentBlock.getBlockData();
+                    otherChestData.setType(org.bukkit.block.data.type.Chest.Type.SINGLE);
+                    adjacentBlock.setBlockData(otherChestData);
+                    getLogger().info("Prevented double chest formation at " + block.getLocation());
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onChunkLoad(org.bukkit.event.world.ChunkLoadEvent event) {
+        for (org.bukkit.block.BlockState state : event.getChunk().getTileEntities()) {
+            if (state instanceof Chest) {
+                org.bukkit.block.data.type.Chest chestData = (org.bukkit.block.data.type.Chest) state.getBlockData();
+                if (chestData.getType() != org.bukkit.block.data.type.Chest.Type.SINGLE) {
+                    chestData.setType(org.bukkit.block.data.type.Chest.Type.SINGLE);
+                    state.getBlock().setBlockData(chestData);
+                    getLogger().info("Ensured chest at " + state.getLocation() + " is single on chunk load.");
+                }
+            }
+        }
+    }
+
+    private boolean isTradeChestBlock(org.bukkit.block.Chest chest) {
+        if (chest == null) return false;
+        TileState state = (TileState) chest;
+        PersistentDataContainer data = state.getPersistentDataContainer();
+        return data.has(keyCostType, PersistentDataType.STRING);
     }
 
     private boolean hasEnoughItems(Inventory inv, Material mat, int amount) {
