@@ -24,6 +24,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.help.HelpTopic;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -44,6 +45,39 @@ public class ChestTrade extends JavaPlugin implements Listener {
         "^(?:\"([^\"]+)\"|(\\S+))\\s+(\\d+)\\s+(?:\"([^\"]+)\"|(\\S+))\\s+(\\d+)$"
     );
 
+    // Delt hjelpetekst for /ctshop info, /ctshop help og /help ctshop
+    private static final String[] CTSHOP_HELP_LINES = {
+        "§6======== §e§lCHEST TRADE HELP §6========",
+        "",
+        "§eHow to create a trade chest:",
+        "",
+        "§7Method 1 - Command:",
+        "  §f/ctshop create <cost> <amount> <product> <amount>",
+        "  §8Example: §7/ctshop create DIAMOND 1 DIRT 16",
+        "  §8Multi-word item: §7/ctshop create \"spruce planks\" 1 \"oak planks\" 16",
+        "",
+        "§7Method 2 - Sign:",
+        "  §fPlace a sign above a chest with:",
+        "  §8Line 1: §f[TRADE]",
+        "  §8Line 2: §fDIAMOND:1",
+        "  §8Line 3: §fDIRT:16",
+        "",
+        "§eCommands:",
+        "  §f/ctshop info / /ctshop help §7- Show this help",
+        "  §f/ctshop info chest §7- Show info about trade chest",
+        "  §f/ctshop create ... §7- Create a trade chest",
+        "",
+        "§eNote about chest placement:",
+        "§7- Trade chests cannot become double chests",
+        "§7- To place a chest next to a trade chest:",
+        "§8  → Shift+right-click on the block BELOW the trade chest",
+        "§7- Or use a §fbarrel §7for more storage space",
+        "",
+        "§ePermissions:",
+        "  §7- §fchesttrade.create §7- Allow creating shops",
+        "§6================================"
+    };
+
     @Override
     public void onEnable() {
         keyCostType = new NamespacedKey(this, "costType");
@@ -54,6 +88,14 @@ public class ChestTrade extends JavaPlugin implements Listener {
         keyIsTradeSign = new NamespacedKey(this, "isTradeSign");
         
         Bukkit.getPluginManager().registerEvents(this, this);
+
+        // Registrer et eget "help topic" slik at /help ctshop viser samme
+        // hjelpetekst som /ctshop info og /ctshop help.
+        Bukkit.getHelpMap().addTopic(new ChestTradeHelpTopic(
+            "/ctshop",
+            "Admin cmd for creating chest trade shops.",
+            String.join("\n", CTSHOP_HELP_LINES)
+        ));
 
         // Velg din egen farge
         // Velg din egen farge
@@ -97,38 +139,11 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
     Player player = (Player) sender;
 
-    // /ctshop info - vis generell hjelp om hvordan lage shop
-    // /ctshop info - vis generell hjelp om hvordan lage shop
-    if (args.length == 1 && args[0].equalsIgnoreCase("info")) {
-        player.sendMessage("§6======== §e§lCHEST TRADE HELP §6========");
-        player.sendMessage("");
-        player.sendMessage("§eHow to create a trade chest:");
-        player.sendMessage("");
-        player.sendMessage("§7Method 1 - Command:");
-        player.sendMessage("  §f/ctshop create <cost> <amount> <product> <amount>");
-        player.sendMessage("  §8Example: §7/ctshop create DIAMOND 1 DIRT 16");
-        player.sendMessage("  §8Multi-word item: §7/ctshop create \"spruce planks\" 1 \"oak planks\" 16");
-        player.sendMessage("");
-        player.sendMessage("§7Method 2 - Sign:");
-        player.sendMessage("  §fPlace a sign above a chest with:");
-        player.sendMessage("  §8Line 1: §f[TRADE]");
-        player.sendMessage("  §8Line 2: §fDIAMOND:1");
-        player.sendMessage("  §8Line 3: §fDIRT:16");
-        player.sendMessage("");
-        player.sendMessage("§eCommands:");
-        player.sendMessage("  §f/ctshop info §7- Show this help");
-        player.sendMessage("  §f/ctshop info chest §7- Show info about trade chest");
-        player.sendMessage("  §f/ctshop create ... §7- Create a trade chest");
-        player.sendMessage("");
-        player.sendMessage("§eNote about chest placement:");
-        player.sendMessage("§7- Trade chests cannot become double chests");
-        player.sendMessage("§7- To place a chest next to a trade chest:");
-        player.sendMessage("§8  → Shift+right-click on the block BELOW the trade chest");
-        player.sendMessage("§7- Or use a §fbarrel §7for more storage space");
-        player.sendMessage("");
-        player.sendMessage("§ePermissions:");
-        player.sendMessage("  §7- §fchesttrade.create §7- Allow creating shops");
-        player.sendMessage("§6================================");
+    // /ctshop info (eller /ctshop help) - vis generell hjelp om hvordan lage shop
+    if (args.length == 1 && (args[0].equalsIgnoreCase("info") || args[0].equalsIgnoreCase("help"))) {
+        for (String line : CTSHOP_HELP_LINES) {
+            player.sendMessage(line);
+        }
         return true;
     }
 
@@ -949,5 +964,22 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
             return container;
         }
         return null;
+    }
+
+    /**
+     * Enkelt help topic slik at /help ctshop viser samme tekst som
+     * /ctshop info og /ctshop help.
+     */
+    private static class ChestTradeHelpTopic extends HelpTopic {
+        ChestTradeHelpTopic(String name, String shortText, String fullText) {
+            this.name = name;
+            this.shortText = shortText;
+            this.fullText = fullText;
+        }
+
+        @Override
+        public boolean canSee(CommandSender commandSender) {
+            return true;
+        }
     }
 }
