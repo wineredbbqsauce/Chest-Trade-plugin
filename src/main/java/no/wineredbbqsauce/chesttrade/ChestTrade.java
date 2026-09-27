@@ -450,11 +450,14 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         // TIllat Owner og OP for å åpne shop
         if (player.getUniqueId().toString().equals(ownerUUID) || player.isOp()) {
             boolean isOwner = player.getUniqueId().toString().equals(ownerUUID);
-            player.sendActionBar(net.kyori.adventure.text.Component.text(
-                isOwner
-                    ? "§7Management mode — this opens your trade stock, it isn't a trade."
-                    : "§7OP mode — opening trade stock (not a customer trade)."
-            ));
+            player.spigot().sendMessage(
+                net.md_5.bungee.api.ChatMessageType.ACTION_BAR,
+                new net.md_5.bungee.api.chat.TextComponent(
+                    isOwner
+                        ? "§7Management mode — this opens your trade stock, it isn't a trade."
+                        : "§7OP mode — opening trade stock (not a customer trade)."
+                )
+            );
             return; // Tillat åpning
         }
 
